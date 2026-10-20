@@ -6,7 +6,9 @@ import { openDb } from './db/database.js';
 import { createApp } from './app.js';
 import { seedServers } from './seed.js';
 
-const config = loadConfig();
+let config;
+try { config = loadConfig(); }
+catch (e) { console.error(`Configuration error: ${e.message}`); process.exit(1); } // clear one-line message instead of a stack trace
 const logger = createLogger({ level: config.logLevel });
 if (config.dbPath !== ':memory:') mkdirSync(dirname(config.dbPath), { recursive: true });
 const db = openDb(config.dbPath);

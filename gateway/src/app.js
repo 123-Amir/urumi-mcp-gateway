@@ -8,10 +8,13 @@ import { miscRoutes } from './routes/misc.js';
 import { mountMcp } from './gateway/mcpEndpoint.js';
 import { UpstreamManager } from './gateway/upstreams.js';
 import { GatewayService } from './gateway/service.js';
+import { chatRoutes } from './routes/chat.js';
+import { createProvider } from './chat/providers.js';
 
-export function createApp({ db, config, logger }) {
+export function createApp({ db, config, logger, deps = {} }) {
   const manager = new UpstreamManager({ db, secretKey: config.encryptionKey, ssrf: config.upstream, timeouts: config.timeouts, logger });
   const service = new GatewayService({ db, manager, logger, limits: { maxResultBytes: config.maxResultBytes, maxArgBytes: config.maxArgBytes } });
+  const provider = deps.provider ?? createProvider(config.llm, deps);
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy);
@@ -31,6 +34,7 @@ export function createApp({ db, config, logger }) {
   const team = teamRoutes({ db, logger, mw });
   api.use('/users', team.users);
   api.use('/keys', mw.requireAuth, team.keys);
+  api.use('/chat', mw.requireAuth, chatRoutes({ db, config, service, provider, logger, now: deps.now }));
   api.use('/', mw.requireAuth, miscRoutes({ db, service, mw }));
   api.use((req, res) => res.status(404).json({ error: 'not_found' }));
   app.use('/api', api);

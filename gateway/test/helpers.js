@@ -36,7 +36,7 @@ export async function startUpstream({ name, token, port = 0, tools = {} }) {
 export const textTool = (fn) => ({ handler: async (args) => ({ content: [{ type: 'text', text: fn(args) }] }) });
 
 // ---- gateway under test, on a random port, with fast timeouts ----
-export async function startGateway(over = {}) {
+export async function startGateway(over = {}, deps = {}) {
   const clock = { t: Date.now() };
   const db = openDb(':memory:', { clock: () => new Date(clock.t) });
   const logs = [];
@@ -49,9 +49,10 @@ export async function startGateway(over = {}) {
     sessionTtlMs: 60 * 60_000, sessionIdleMs: 10 * 60_000, trustProxy: 0, loginRateLimit: { max: 5, windowMs: 60_000 },
     upstream: { allowlist: ['127.0.0.1'], allowPrivate: false },
     timeouts: { connectMs: 1500, listMs: 1500, callMs: 400, refreshMs: 3_600_000, cooldownMs: 300 },
-    maxResultBytes: 2000, maxArgBytes: 10_000, ...over,
+    maxResultBytes: 2000, maxArgBytes: 10_000,
+    llm: { provider: 'mock' }, chat: { maxSteps: 5, maxCallsPerStep: 3, maxToolResultChars: 4000, ratePerMin: 50, totalTimeoutMs: 10_000 }, ...over,
   };
-  const { app, manager } = createApp({ db, config, logger });
+  const { app, manager } = createApp({ db, config, logger, deps });
   const srv = http.createServer(app); const port = await listen(srv);
   const base = `http://127.0.0.1:${port}`;
   return { db, clock, logs, adminKey: adminKey.raw, base, manager, config,

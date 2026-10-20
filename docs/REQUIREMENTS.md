@@ -13,7 +13,7 @@ Status legend: ✅ done + tested | 🟡 code written, not yet verified end-to-en
 | 8 | Woo MCP server (5 tools, Streamable HTTP, bearer-protected, PII-minimised) | woo-mcp/src/*.js | woo-mcp/test (9) vs FAKE WooCommerce REST | 🟡 real WooCommerce ⬜ (needs cluster) |
 | 9 | 2 extra upstream servers (own demo servers: utils, notes) | demo-mcp/src/*.js | demo-mcp/test (3) + gateway/test/real-upstreams.test.js (4) | ✅ |
 | 10 | React dashboard | — | — | ⬜ |
-| 11 | Chat agent tool loop (+ mock mode) | — | — | ⬜ |
+| 11 | Chat agent: real tool loop via gateway AS the user, OpenAI-compatible provider (configurable), labelled mock mode, caps, rate limit, mid-chat revocation | gateway/src/chat/*.js, routes/chat.js | gateway/test/chat.test.js (12): scripted loop, fake OpenAI-compatible server, mock e2e | 🟡 loop + wire format verified; **real OpenAI/LLM NOT tested** (no key; api.openai.com unreachable from sandbox); chat UI ⬜ |
 | 12 | Helm charts (local + prod values), probes, limits, NetworkPolicy | — | — | ⬜ |
 | 13 | Cluster run (kind/k3d) | — | 🚫 no docker/kubectl/helm in authoring sandbox | 🚫 |
 | 14 | E2E scenarios 1–10 | — | — | ⬜ |
@@ -26,3 +26,5 @@ Status legend: ✅ done + tested | 🟡 code written, not yet verified end-to-en
 - SSRF: DNS-rebinding TOCTOU narrowed (re-check on each connect) but not eliminated; NetworkPolicy egress is the 2nd layer (unverified, needs a cluster).
 - A secret placed in an upstream URL *query string* is not treated as a credential and is shown to admins.
 - Tool descriptions from upstreams are untrusted; we cap/sanitize + attribute them, but cannot stop prompt-injection by content alone.
+- Chat: conversations are not stored server-side (kept in the browser); no streaming (single JSON response); tool calls within one step run sequentially.
+- Chat: prompt-injection via tool output is mitigated structurally (untrusted-data rule, `tool` role, per-user tool filtering, step/call caps) but NOT provably prevented; no human-confirmation step before write tools yet.

@@ -38,9 +38,23 @@ export function loadConfig(env = process.env) {
     },
     maxResultBytes: int(env.MAX_TOOL_RESULT_BYTES, 256 * 1024),
     maxArgBytes: int(env.MAX_TOOL_ARG_BYTES, 256 * 1024),
+    llm: {
+      provider: env.LLM_PROVIDER ?? 'mock',                 // 'mock' (default, clearly labelled) | 'openai' (any OpenAI-compatible API)
+      apiKey: env.OPENAI_API_KEY ?? null,                   // from a Kubernetes Secret; never exposed to the browser
+      baseUrl: env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
+      model: env.LLM_MODEL ?? null,                         // no default on purpose: model names get retired, make the operator choose
+      timeoutMs: int(env.LLM_TIMEOUT_MS, 60000),
+    },
+    chat: { maxSteps: int(env.CHAT_MAX_STEPS, 6), maxCallsPerStep: int(env.CHAT_MAX_CALLS_PER_STEP, 4), maxToolResultChars: int(env.CHAT_MAX_TOOL_RESULT_CHARS, 8000),
+            ratePerMin: int(env.CHAT_RATE_PER_MIN, 20), totalTimeoutMs: int(env.CHAT_TOTAL_TIMEOUT_MS, 120000) },
     seedServers: env.SEED_SERVERS_JSON ? JSON.parse(env.SEED_SERVERS_JSON) : [],
     logLevel: env.LOG_LEVEL ?? 'info',
   };
+  if (!['mock', 'openai'].includes(cfg.llm.provider)) throw new Error('LLM_PROVIDER must be "mock" or "openai"');
+  if (cfg.llm.provider === 'openai') {
+    if (!cfg.llm.model) throw new Error('LLM_MODEL is required when LLM_PROVIDER=openai');
+    if (!cfg.llm.apiKey && !env.OPENAI_BASE_URL) throw new Error('OPENAI_API_KEY is required for the default OpenAI endpoint');
+  }
   if (prod) {
     if (!cfg.allowedOrigins.length) throw new Error('PUBLIC_ORIGINS is required in production');
     if (!cfg.cookie.secure) throw new Error('COOKIE_SECURE must be true in production');
