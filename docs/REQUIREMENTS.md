@@ -10,8 +10,8 @@ Status legend: ✅ done + tested | 🟡 code written, not yet verified end-to-en
 | 5 | Dashboard login (key-paste → HttpOnly session), CSRF, expiry, logout, revocation, RBAC on every route | routes/*.js, http/middleware.js | test/auth.test.js (16 tests) | ✅ (HTTP level; browser UI ⬜) |
 | 6 | Gateway MCP endpoint (aggregate, route, `slug__tool` namespacing, per-user filtering, audit) | gateway/{mcpEndpoint,service,upstreams}.js | test/gateway.test.js (real SDK client + 6 fake upstreams) | ✅ (against fake upstreams; real Woo ⬜) |
 | 7 | Timeouts / dead-upstream isolation / status tracking | gateway/upstreams.js | slow, dead, hanging, malformed, redirect, die-then-recover tests | ✅ (fake upstreams; real pod-kill on k8s ⬜ 🚫) |
-| 8 | Woo MCP server (5 tools, Streamable HTTP) | — | — | ⬜ |
-| 9 | 2 extra upstream servers | — | — | ⬜ |
+| 8 | Woo MCP server (5 tools, Streamable HTTP, bearer-protected, PII-minimised) | woo-mcp/src/*.js | woo-mcp/test (9) vs FAKE WooCommerce REST | 🟡 real WooCommerce ⬜ (needs cluster) |
+| 9 | 2 extra upstream servers (own demo servers: utils, notes) | demo-mcp/src/*.js | demo-mcp/test (3) + gateway/test/real-upstreams.test.js (4) | ✅ |
 | 10 | React dashboard | — | — | ⬜ |
 | 11 | Chat agent tool loop (+ mock mode) | — | — | ⬜ |
 | 12 | Helm charts (local + prod values), probes, limits, NetworkPolicy | — | — | ⬜ |
