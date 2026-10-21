@@ -12,7 +12,7 @@ Status legend: ✅ done + tested | 🟡 code written, not yet verified end-to-en
 | 7 | Timeouts / dead-upstream isolation / status tracking | gateway/upstreams.js | slow, dead, hanging, malformed, redirect, die-then-recover tests | ✅ (fake upstreams; real pod-kill on k8s ⬜ 🚫) |
 | 8 | Woo MCP server (5 tools, Streamable HTTP, bearer-protected, PII-minimised) | woo-mcp/src/*.js | woo-mcp/test (9) vs FAKE WooCommerce REST | 🟡 real WooCommerce ⬜ (needs cluster) |
 | 9 | 2 extra upstream servers (own demo servers: utils, notes) | demo-mcp/src/*.js | demo-mcp/test (3) + gateway/test/real-upstreams.test.js (4) | ✅ |
-| 10 | React dashboard | — | — | ⬜ |
+| 10 | React dashboard: login, servers (status/tools/add/edit/disable/remove), team + keys (one-time key), audit log, chat with tool receipts | dashboard/src/** | dashboard/test (25: static security guards, API client, component flows) + gateway/test/dashboard-contract.test.js (real api.js vs real gateway) | 🟡 behaviour verified in jsdom + against real gateway; **never opened in a real browser** (no browser in sandbox): layout, responsiveness, dark mode, keyboard flow need manual check |
 | 11 | Chat agent: real tool loop via gateway AS the user, OpenAI-compatible provider (configurable), labelled mock mode, caps, rate limit, mid-chat revocation | gateway/src/chat/*.js, routes/chat.js | gateway/test/chat.test.js (12): scripted loop, fake OpenAI-compatible server, mock e2e | 🟡 loop + wire format verified; **real OpenAI/LLM NOT tested** (no key; api.openai.com unreachable from sandbox); chat UI ⬜ |
 | 12 | Helm charts (local + prod values), probes, limits, NetworkPolicy | — | — | ⬜ |
 | 13 | Cluster run (kind/k3d) | — | 🚫 no docker/kubectl/helm in authoring sandbox | 🚫 |
@@ -28,3 +28,5 @@ Status legend: ✅ done + tested | 🟡 code written, not yet verified end-to-en
 - Tool descriptions from upstreams are untrusted; we cap/sanitize + attribute them, but cannot stop prompt-injection by content alone.
 - Chat: conversations are not stored server-side (kept in the browser); no streaming (single JSON response); tool calls within one step run sequentially.
 - Chat: prompt-injection via tool output is mitigated structurally (untrusted-data rule, `tool` role, per-user tool filtering, step/call caps) but NOT provably prevented; no human-confirmation step before write tools yet.
+- Dashboard: no UI yet for tool deny-rules (backend + tests exist: /api/policies). Chat has no streaming. No pagination count (Older/Newer only). Not visually reviewed in a browser.
+- Dashboard: CSRF token lives in JS memory, so a same-origin XSS could still act as the user (React escaping, no dangerouslySetInnerHTML/localStorage are enforced by tests; a strict CSP header must be set by the Ingress/nginx in Phase 7).
