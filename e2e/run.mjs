@@ -225,5 +225,5 @@ console.log(`\nRESULT: ${count('PASS')} PASS, ${count('SIMULATED')} SIMULATED (a
 const md = ['# Last end-to-end run (`node e2e/run.mjs`)', '', `Run at ${new Date().toISOString()}. Real gateway/woo-mcp/demo-mcp processes + official MCP SDK client; **WooCommerce is a fake** and chat is **mock mode** (no LLM).`, '',
   `**${count('PASS')} PASS, ${count('SIMULATED')} SIMULATED, ${count('NOT RUN')} NOT RUN, ${count('FAIL')} FAIL**`, '', '| Scenario | Check | Status | Evidence |', '|---|---|---|---|',
   ...results.map((r) => `| ${r.scenario.replace(/\|/g, '/')} | ${r.name.replace(/\|/g, '/')} | ${r.st} | ${String(r.evidence).replace(/\|/g, '/').replace(/\n/g, ' ')} |`)].join('\n');
-writeFileSync(join(ROOT, 'docs', 'E2E_LAST_RUN.md'), md + '\n');
+writeFileSync(process.env.E2E_REPORT ?? join(ROOT, 'docs', 'E2E_LAST_RUN.md'), md + '\n');   // sabotage runs point this elsewhere so they can never overwrite the real evidence
 process.exit(fatal || count('FAIL') ? 1 : 0);

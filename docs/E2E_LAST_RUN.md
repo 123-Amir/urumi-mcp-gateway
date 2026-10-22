@@ -1,8 +1,8 @@
 # Last end-to-end run (`node e2e/run.mjs`)
 
-Run at 2026-10-22T18:13:19.405Z. Real gateway/woo-mcp/demo-mcp processes + official MCP SDK client; **WooCommerce is a fake** and chat is **mock mode** (no LLM).
+Run at 2026-10-22T18:16:38.506Z. Real gateway/woo-mcp/demo-mcp processes + official MCP SDK client; **WooCommerce is a fake** and chat is **mock mode** (no LLM).
 
-**36 PASS, 2 SIMULATED, 2 NOT RUN, 1 FAIL**
+**37 PASS, 2 SIMULATED, 2 NOT RUN, 0 FAIL**
 
 | Scenario | Check | Status | Evidence |
 |---|---|---|---|
@@ -11,7 +11,7 @@ Run at 2026-10-22T18:13:19.405Z. Real gateway/woo-mcp/demo-mcp processes + offic
 | Setup: first admin signs in with the bootstrap key; WooCommerce MCP server is pre-registered | user A and user B exist with individual keys | PASS |  |
 | 1. Store: shopper checks out; order is visible to the admin  (SIMULATED store: NOT real WooCommerce) | order placed via the (fake) checkout is readable through the gateway | SIMULATED | order #1001 299.00 INR |
 | 1. Store: shopper checks out; order is visible to the admin  (SIMULATED store: NOT real WooCommerce) | real storefront + WooCommerce admin UI | NOT RUN | needs the real cluster: not exercised here |
-| 2. As user A: chat agent creates a product; it appears on the storefront | chat called woo__create_product as user A | PASS | 19 ms |
+| 2. As user A: chat agent creates a product; it appears on the storefront | chat called woo__create_product as user A | PASS | 15 ms |
 | 2. As user A: chat agent creates a product; it appears on the storefront | product appears on the (fake) storefront with the right price | SIMULATED | {"name":"Blue Bottle","price":"499"} |
 | 2. As user A: chat agent creates a product; it appears on the storefront | reply is labelled as mock mode | PASS |  |
 | 3. A shopper buys it; user A asks the chat agent for today's orders | chat used two tools in order: utils__current_date then woo__list_orders | PASS |  |
@@ -41,7 +41,7 @@ Run at 2026-10-22T18:13:19.405Z. Real gateway/woo-mcp/demo-mcp processes + offic
 | Extra: security properties asserted on the live system | member A is refused admin APIs (403) | PASS |  |
 | Extra: security properties asserted on the live system | SSRF: registering the cloud-metadata address is refused | PASS |  |
 | Extra: security properties asserted on the live system | no upstream credential/token appears in the admin servers API | PASS |  |
-| Extra: security properties asserted on the live system | BONUS tool permissions: member A loses create_product (hidden + rejected); admin keeps it | FAIL |  |
+| Extra: security properties asserted on the live system | BONUS tool permissions: member A loses create_product (hidden + rejected); admin keeps it | PASS |  |
 | 10. Every tool call is in the audit log under the right user | all 12 calls made in this run appear in the audit log, per user + source + server + tool | PASS | 12 rows |
 | 10. Every tool call is in the audit log under the right user | rows are attributed to the right users | PASS | bob=2 alice=9 admin=1 |
 | 10. Every tool call is in the audit log under the right user | failed calls recorded as failures with a safe summary | PASS |  |

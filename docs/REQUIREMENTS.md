@@ -34,3 +34,20 @@ Status legend: ✅ done + tested | 🟡 code written, not yet verified end-to-en
 - Deploy: woo-mcp talks plain HTTP to the WordPress Service and sends `X-Forwarded-Proto: https`; wp-config trusts that header (NetworkPolicy limits who can send it). Unverified against a real WooCommerce: fallback is OAuth1 signing or HTTPS via the Ingress.
 - Deploy: gateway is a single replica (SQLite on RWO PVC); WordPress/gateway upgrades use `Recreate` (short outage); rollback does not roll back data; `local-path` storage is node-local (no HA, back up volumes).
 - Deploy: floating third-party tags (`wordpress:6-apache`, `mariadb:11`) for convenience; pin by digest in production.
+
+## Required end-to-end scenarios (assignment "Definition of done")
+Evidence: `node e2e/run.mjs` (writes `docs/E2E_LAST_RUN.md`) = real gateway/woo-mcp/demo-mcp **processes** + official MCP SDK client + dashboard-style cookie/CSRF session. WooCommerce is a **fake** and chat is **mock mode**.
+`bash e2e/sabotage.sh` proves the e2e can fail (5 injected gateway bugs, all detected).
+
+| # | Scenario | What is proven | Still NOT proven (needs your cluster / real services) |
+|---|---|---|---|
+| 1 | Storefront: cart, checkout (COD), order in WooCommerce admin | order created via fake checkout is readable through the gateway (SIMULATED) | real WordPress/WooCommerce storefront + wp-admin UI |
+| 2 | User A: chat creates a product; appears on storefront | chat tool loop -> gateway -> woo-mcp -> (fake) store, audited as A; product on fake storefront | real LLM; real storefront |
+| 3 | Order placed; chat answers "orders today" | two-tool chain (date -> list_orders) returns the order; PII not leaked | real LLM; real order via real checkout; real WooCommerce `after` filter timezone semantics |
+| 4 | User B: external client with only URL + key | official SDK client connects with Bearer key only | Claude Code / Cursor / MCP Inspector specifically |
+| 5 | B discovers tools of all enabled upstreams and asks the orders question | 10 tools from 3 servers; tool-level orders query works | natural-language prompt through a real LLM |
+| 6 | One prompt needing two upstreams | chat trace shows utils + woo | real LLM choosing tools itself |
+| 7 | Revoke B's key; next call rejected | live client, fresh connection and dashboard login all rejected | - |
+| 8 | Disable an upstream; tools vanish from chat and external client | list + chat tool list + direct call + chat reply; re-enable restores | - |
+| 9 | Kill one upstream; others work; dashboard shows unreachable | real process SIGKILL; clear error; other upstreams OK; status+reason; auto-reconnect after restart | real `kubectl delete pod` |
+| 10 | All calls in audit under the right user | multiset comparison of 12 calls vs audit rows; no args/secrets stored; logs secret-free | - |
