@@ -1,0 +1,9 @@
+node_modules
+test
+data
+*.db
+*.db-wal
+*.db-shm
+.env*
+Dockerfile
+.dockerignore

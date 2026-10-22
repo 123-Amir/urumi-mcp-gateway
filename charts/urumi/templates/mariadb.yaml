@@ -1,0 +1,96 @@
+{{- $fn := include "urumi.fullname" . }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $fn }}-mariadb
+  labels:
+    {{- include "urumi.labels" (dict "root" . "component" "mariadb") | nindent 4 }}
+spec:
+  serviceName: {{ $fn }}-mariadb
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "urumi.selector" (dict "root" . "component" "mariadb") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "urumi.labels" (dict "root" . "component" "mariadb") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $fn }}-mariadb
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "urumi.podSecurity" (dict "uid" 999) | nindent 8 }}
+      containers:
+        - name: mariadb
+          image: {{ include "urumi.image" .Values.images.mariadb }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          ports:
+            - name: mysql
+              containerPort: 3306
+          env:
+            - name: MARIADB_DATABASE
+              value: wordpress
+            - name: MARIADB_USER
+              value: wordpress
+            {{- include "urumi.secretEnv" (dict "root" . "name" "MARIADB_PASSWORD" "key" "MARIADB_PASSWORD") | nindent 12 }}
+            {{- include "urumi.secretEnv" (dict "root" . "name" "MARIADB_ROOT_PASSWORD" "key" "MARIADB_ROOT_PASSWORD") | nindent 12 }}
+          # Third-party stateful image: runs as uid 999 (non-root) with all capabilities dropped, but its root filesystem stays writable
+          # (the entrypoint writes runtime files); the data directory is a PVC.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.mariadb.resources | nindent 12 }}
+          startupProbe:                  # first boot initialises the data directory; allow up to ~3 minutes
+            tcpSocket:
+              port: mysql
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:                # "can answer queries" => only then does WordPress receive a Service endpoint
+            exec:
+              command: ["/bin/sh", "-c", "mariadb-admin ping -h 127.0.0.1 -uroot -p\"$MARIADB_ROOT_PASSWORD\" --silent"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:                 # restart only if the port stops answering (a slow query must not trigger a restart)
+            tcpSocket:
+              port: mysql
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "urumi.labels" (dict "root" . "component" "mariadb") | nindent 10 }}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.global.storageClass }}
+        storageClassName: {{ .Values.global.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.mariadb.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-mariadb
+  labels:
+    {{- include "urumi.labels" (dict "root" . "component" "mariadb") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "urumi.selector" (dict "root" . "component" "mariadb") | nindent 4 }}
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql

@@ -1,0 +1,174 @@
+{{- $fn := include "urumi.fullname" . }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fn }}-wordpress
+  labels:
+    {{- include "urumi.labels" (dict "root" . "component" "wordpress") | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.global.storageClass }}
+  storageClassName: {{ .Values.global.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.wordpress.persistence.size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-wordpress
+  labels:
+    {{- include "urumi.labels" (dict "root" . "component" "wordpress") | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate            # RWO volume: the old pod must release it before the new one starts
+  selector:
+    matchLabels:
+      {{- include "urumi.selector" (dict "root" . "component" "wordpress") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "urumi.labels" (dict "root" . "component" "wordpress") | nindent 8 }}
+      annotations:
+        checksum/setup: {{ include (print $.Template.BasePath "/wordpress-setup-configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ $fn }}-wordpress
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        fsGroup: 33            # www-data: both containers can write the shared volume
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: wordpress
+          image: {{ include "urumi.image" .Values.images.wordpress }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: {{ $fn }}-mariadb:3306
+            - name: WORDPRESS_DB_NAME
+              value: wordpress
+            - name: WORDPRESS_DB_USER
+              value: wordpress
+            {{- include "urumi.secretEnv" (dict "root" . "name" "WORDPRESS_DB_PASSWORD" "key" "MARIADB_PASSWORD") | nindent 12 }}
+            - name: WORDPRESS_CONFIG_EXTRA
+              value: |
+                define('WP_HOME', '{{ include "urumi.storeUrl" . }}');
+                define('WP_SITEURL', '{{ include "urumi.storeUrl" . }}');
+                define('DISALLOW_FILE_EDIT', true);
+                // Behind the Ingress TLS is terminated before WordPress. Trust the proxy header so WordPress (and WooCommerce's
+                // REST key authentication, which insists on HTTPS) know the request was secure. Only the Ingress controller and
+                // woo-mcp can reach this pod (NetworkPolicy), and the Ingress overwrites this header from the real connection.
+                if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') { $_SERVER['HTTPS'] = 'on'; }
+          # DOCUMENTED EXCEPTION: the official WordPress/Apache image starts as root (to bind :80 and chown the volume, then Apache drops to
+          # www-data). We keep it as locked down as that allows: no privilege escalation, every capability dropped except the six it needs.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID", "NET_BIND_SERVICE"]
+          resources:
+            {{- toYaml .Values.wordpress.resources | nindent 12 }}
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /wp-login.php     # 200 once installed; 302 to the installer before that. Both mean "Apache + PHP + DB are answering".
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - name: wp-content
+              mountPath: /var/www/html
+        - name: wp-setup
+          image: {{ include "urumi.image" .Values.images.wpcli }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command: ["/bin/sh", "/scripts/setup.sh"]
+          env:
+            - { name: HOME, value: /tmp }
+            - { name: WP_CLI_CACHE_DIR, value: /tmp/wp-cli-cache }
+            - { name: WP_HOME, value: {{ include "urumi.storeUrl" . | quote }} }
+            - { name: STORE_TITLE, value: {{ .Values.store.title | quote }} }
+            - { name: STORE_TIMEZONE, value: {{ .Values.store.timezone | quote }} }
+            - { name: STORE_CURRENCY, value: {{ .Values.store.currency | quote }} }
+            - { name: STORE_COUNTRY, value: {{ .Values.store.country | quote }} }
+            - { name: INSTALL_WOOCOMMERCE, value: {{ .Values.store.installWooCommerce | quote }} }
+            - { name: WP_ADMIN_USER, value: {{ .Values.store.adminUser | quote }} }
+            - { name: WP_ADMIN_EMAIL, value: {{ .Values.store.adminEmail | quote }} }
+            # wp-config.php reads these at runtime, so the wp-cli process needs the same database settings as the web container
+            - { name: WORDPRESS_DB_HOST, value: "{{ $fn }}-mariadb:3306" }
+            - { name: WORDPRESS_DB_NAME, value: wordpress }
+            - { name: WORDPRESS_DB_USER, value: wordpress }
+            {{- include "urumi.secretEnv" (dict "root" . "name" "WORDPRESS_DB_PASSWORD" "key" "MARIADB_PASSWORD") | nindent 12 }}
+            {{- include "urumi.secretEnv" (dict "root" . "name" "WP_ADMIN_PASSWORD" "key" "WORDPRESS_ADMIN_PASSWORD") | nindent 12 }}
+            {{- include "urumi.secretEnv" (dict "root" . "name" "WC_CONSUMER_KEY" "key" "WC_CONSUMER_KEY") | nindent 12 }}
+            {{- include "urumi.secretEnv" (dict "root" . "name" "WC_CONSUMER_SECRET" "key" "WC_CONSUMER_SECRET") | nindent 12 }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 33
+            runAsGroup: 33
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.wordpress.setupResources | nindent 12 }}
+          # Not a serving workload: it configures the store, then idles with a heartbeat. No readiness probe on purpose,
+          # so a failing WooCommerce download never hides the storefront or the logs from you.
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "find /tmp/heartbeat -mmin -2 | grep -q ."]
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            failureThreshold: 3
+          volumeMounts:
+            - name: wp-content
+              mountPath: /var/www/html
+            - name: tmp
+              mountPath: /tmp
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: wp-content
+          persistentVolumeClaim:
+            claimName: {{ $fn }}-wordpress
+        - name: tmp
+          emptyDir: {}
+        - name: scripts
+          configMap:
+            name: {{ $fn }}-wp-setup
+            defaultMode: 0555
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-wordpress
+  labels:
+    {{- include "urumi.labels" (dict "root" . "component" "wordpress") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "urumi.selector" (dict "root" . "component" "wordpress") | nindent 4 }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

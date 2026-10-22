@@ -1,0 +1,5 @@
+{{- $utilsEnv := include "urumi.demoEnv" (dict "root" . "mode" "utils" "tokenKey" "UTILS_MCP_TOKEN") }}
+{{- $notesEnv := include "urumi.demoEnv" (dict "root" . "mode" "notes" "tokenKey" "NOTES_MCP_TOKEN") }}
+{{ include "urumi.httpWorkload" (dict "root" . "component" "demo-utils" "image" .Values.images.demoMcp "port" 3000 "replicas" .Values.demo.replicas "resources" .Values.demo.resources "env" $utilsEnv) }}
+---
+{{ include "urumi.httpWorkload" (dict "root" . "component" "demo-notes" "image" .Values.images.demoMcp "port" 3000 "replicas" 1 "resources" .Values.demo.resources "env" $notesEnv) }}

@@ -1,0 +1,111 @@
+{{- /* Three Ingress objects, two hosts:
+       shop.<domain>       /      -> WordPress storefront + wp-admin
+       dashboard.<domain>  /      -> React dashboard (static)
+       dashboard.<domain>  /api, /mcp -> gateway   (same host as the dashboard => same-origin session cookie, no CORS)
+     woo-mcp, MariaDB and the demo MCP servers have NO Ingress: they are reachable only from inside the cluster, and only as NetworkPolicy allows. */}}
+{{- $fn := include "urumi.fullname" . }}
+{{- $store := include "urumi.storeHost" . }}
+{{- $dash := include "urumi.dashboardHost" . }}
+{{- $tls := .Values.ingress.tls }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fn }}-store
+  labels:
+    {{- include "urumi.labels" (dict "root" . "component" "wordpress") | nindent 4 }}
+  annotations:
+    {{- if $tls.clusterIssuer }}
+    cert-manager.io/cluster-issuer: {{ $tls.clusterIssuer | quote }}
+    {{- end }}
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if $tls.enabled }}
+  tls:
+    - hosts: [{{ $store | quote }}]
+      secretName: {{ $tls.secretName }}-shop
+  {{- end }}
+  rules:
+    - host: {{ $store | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fn }}-wordpress
+                port:
+                  name: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fn }}-dashboard
+  labels:
+    {{- include "urumi.labels" (dict "root" . "component" "dashboard") | nindent 4 }}
+  annotations:
+    {{- if $tls.clusterIssuer }}
+    cert-manager.io/cluster-issuer: {{ $tls.clusterIssuer | quote }}
+    {{- end }}
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if $tls.enabled }}
+  tls:
+    - hosts: [{{ $dash | quote }}]
+      secretName: {{ $tls.secretName }}-dashboard
+  {{- end }}
+  rules:
+    - host: {{ $dash | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fn }}-dashboard
+                port:
+                  name: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fn }}-gateway
+  labels:
+    {{- include "urumi.labels" (dict "root" . "component" "gateway") | nindent 4 }}
+  annotations:
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.ingress.gatewayAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if $tls.enabled }}
+  tls:
+    - hosts: [{{ $dash | quote }}]
+      secretName: {{ $tls.secretName }}-dashboard     # same certificate as the dashboard host (issued via the dashboard Ingress annotation only)
+  {{- end }}
+  rules:
+    - host: {{ $dash | quote }}
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fn }}-gateway
+                port:
+                  name: http
+          - path: /mcp
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fn }}-gateway
+                port:
+                  name: http

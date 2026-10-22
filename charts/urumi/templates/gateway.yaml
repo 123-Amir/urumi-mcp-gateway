@@ -1,0 +1,122 @@
+{{- $fn := include "urumi.fullname" . }}
+{{- /* Exact hostnames admins may register as private/in-cluster upstreams (SSRF allowlist). Deliberately NOT a wildcard: otherwise an admin
+       could point the gateway at WordPress or MariaDB. */}}
+{{- $hosts := list
+    (include "urumi.svcHost" (dict "root" . "component" "woo-mcp"))
+    (include "urumi.svcHost" (dict "root" . "component" "demo-utils"))
+    (include "urumi.svcHost" (dict "root" . "component" "demo-notes")) }}
+{{- range .Values.gateway.upstreamAllowedHosts }}{{- $hosts = append $hosts . }}{{- end }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fn }}-gateway
+  labels:
+    {{- include "urumi.labels" (dict "root" . "component" "gateway") | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.global.storageClass }}
+  storageClassName: {{ .Values.global.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.gateway.persistence.size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-gateway
+  labels:
+    {{- include "urumi.labels" (dict "root" . "component" "gateway") | nindent 4 }}
+spec:
+  replicas: 1                # SQLite on a RWO volume => exactly one replica (documented limitation; scale-out needs Postgres)
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "urumi.selector" (dict "root" . "component" "gateway") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "urumi.labels" (dict "root" . "component" "gateway") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $fn }}-gateway
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "urumi.podSecurity" (dict "uid" 10001) | nindent 8 }}
+      containers:
+        - name: gateway
+          image: {{ include "urumi.image" .Values.images.gateway }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - { name: NODE_ENV, value: {{ .Values.gateway.nodeEnv | quote }} }
+            - { name: PORT, value: "8080" }
+            - { name: DB_PATH, value: /data/gateway.db }
+            - { name: LOG_LEVEL, value: {{ .Values.gateway.logLevel | quote }} }
+            - { name: PUBLIC_ORIGINS, value: {{ include "urumi.dashboardUrl" . | quote }} }
+            - { name: COOKIE_SECURE, value: {{ .Values.gateway.cookieSecure | quote }} }
+            - { name: TRUST_PROXY_HOPS, value: "1" }
+            - { name: ALLOW_PRIVATE_UPSTREAMS, value: "false" }
+            - { name: UPSTREAM_ALLOWED_HOSTS, value: {{ join "," $hosts | quote }} }
+            - { name: LLM_PROVIDER, value: {{ .Values.gateway.llm.provider | quote }} }
+            - { name: LLM_MODEL, value: {{ .Values.gateway.llm.model | quote }} }
+            - { name: OPENAI_BASE_URL, value: {{ .Values.gateway.llm.baseUrl | quote }} }
+            {{- include "urumi.secretEnv" (dict "root" . "name" "GATEWAY_ENCRYPTION_KEY" "key" "GATEWAY_ENCRYPTION_KEY") | nindent 12 }}
+            {{- include "urumi.secretEnv" (dict "root" . "name" "BOOTSTRAP_ADMIN_API_KEY" "key" "BOOTSTRAP_ADMIN_API_KEY") | nindent 12 }}
+            {{- include "urumi.secretEnv" (dict "root" . "name" "SEED_SERVERS_JSON" "key" "SEED_SERVERS_JSON") | nindent 12 }}
+            {{- include "urumi.secretEnv" (dict "root" . "name" "OPENAI_API_KEY" "key" "OPENAI_API_KEY" "optional" true) | nindent 12 }}
+          securityContext:
+            {{- include "urumi.containerSecurity" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:        # DB usable. Deliberately does NOT depend on upstream MCP servers: a dead upstream must not make the gateway unready.
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ $fn }}-gateway
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-gateway
+  labels:
+    {{- include "urumi.labels" (dict "root" . "component" "gateway") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "urumi.selector" (dict "root" . "component" "gateway") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

@@ -1,0 +1,112 @@
+# Defaults. Environment differences live ONLY in values-local.yaml / values-prod.yaml (same templates everywhere).
+
+global:
+  domain: ""            # base domain. Store = shop.<domain>, dashboard + gateway = dashboard.<domain>
+  storeHost: ""         # optional explicit override of the store host
+  dashboardHost: ""     # optional explicit override of the dashboard/gateway host
+  scheme: http          # http | https  (what browsers use; drives WordPress URL and the gateway's allowed Origin)
+  storageClass: ""      # "" = cluster default StorageClass
+
+imagePullSecrets: []
+
+images:
+  pullPolicy: IfNotPresent
+  # Our images (build with scripts/build-images.sh; local: loaded into kind, prod: pushed to your registry)
+  gateway:   { repository: urumi/gateway,   tag: "0.1.0" }
+  wooMcp:    { repository: urumi/woo-mcp,   tag: "0.1.0" }
+  demoMcp:   { repository: urumi/demo-mcp,  tag: "0.1.0" }
+  dashboard: { repository: urumi/dashboard, tag: "0.1.0" }
+  # Third-party images. Floating tags are convenient for a demo; for production pin by digest (repository@sha256:...).
+  wordpress: { repository: wordpress, tag: "6-apache" }
+  wpcli:     { repository: wordpress, tag: "cli" }
+  mariadb:   { repository: mariadb,   tag: "11" }
+
+ingress:
+  className: nginx
+  annotations: {}                       # applied to every Ingress
+  gatewayAnnotations: {}                # extra annotations ONLY for /api and /mcp. nginx users: raise proxy-read-timeout above the chat limit (~120s), see values-local.yaml.
+                                        # NOTE: Helm deep-merges maps, so a non-empty default can never be cleared by an override file; keep controller-specific keys out of defaults.
+  tls:
+    enabled: false
+    secretName: urumi-tls               # created by cert-manager (clusterIssuer) or by you
+    clusterIssuer: ""                   # e.g. letsencrypt-prod => adds cert-manager.io/cluster-issuer annotation
+
+# Secrets: generated once on first install (and REUSED on upgrade via `lookup`), or supplied by you.
+secrets:
+  create: true
+  existingSecret: ""                    # set to use a pre-created Secret instead (see docs: required keys). Recommended for production.
+  mariadbRootPassword: ""
+  mariadbPassword: ""
+  wordpressAdminPassword: ""
+  wcConsumerKey: ""
+  wcConsumerSecret: ""
+  wooMcpToken: ""
+  utilsMcpToken: ""
+  notesMcpToken: ""
+  gatewayEncryptionKey: ""              # base64 of 32 random bytes. Losing it makes stored upstream credentials unreadable.
+  bootstrapAdminApiKey: ""              # format umk_<8>_<43> ; first admin signs in to the dashboard with it
+  openaiApiKey: ""                      # only needed when gateway.llm.provider=openai
+
+store:
+  title: Urumi Demo Store
+  adminUser: shopadmin
+  adminEmail: admin@example.com
+  currency: INR
+  country: "IN:KA"
+  timezone: Asia/Kolkata
+  installWooCommerce: true              # wp-cli downloads WooCommerce from wordpress.org on first start (needs outbound HTTPS)
+
+mariadb:
+  persistence: { size: 5Gi }
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 768Mi }
+
+wordpress:
+  persistence: { size: 5Gi }
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 768Mi }
+  setupResources:                       # the wp-cli sidecar that installs/configures WooCommerce
+    requests: { cpu: 25m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+wooMcp:
+  replicas: 1
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { cpu: 300m, memory: 192Mi }
+
+demo:
+  replicas: 1
+  resources:
+    requests: { cpu: 10m, memory: 48Mi }
+    limits: { cpu: 200m, memory: 128Mi }
+
+gateway:
+  nodeEnv: production                   # production => refuses to start without PUBLIC_ORIGINS and Secure cookies
+  cookieSecure: true
+  logLevel: info
+  persistence: { size: 1Gi }            # SQLite lives here (single replica; see docs/REQUIREMENTS.md limitations)
+  upstreamAllowedHosts: []              # EXTRA exact hostnames of in-cluster MCP servers admins may register (the 3 built-ins are added automatically)
+  llm:
+    provider: mock                      # mock | openai (any OpenAI-compatible API)
+    model: ""                           # required when provider=openai
+    baseUrl: https://api.openai.com/v1
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 384Mi }
+
+dashboard:
+  replicas: 1
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { cpu: 200m, memory: 96Mi }
+
+networkPolicy:
+  enabled: true
+  ingressControllerNamespace: ingress-nginx   # k3s/Traefik: kube-system
+  dnsNamespace: kube-system
+  gatewayPublicEgress: true             # gateway may reach PUBLIC internet 443/80 (LLM API, external MCP servers). Private ranges + cloud metadata stay blocked.
+  wordpressInternetEgress: true         # wp-cli/WordPress may reach PUBLIC 443 (wordpress.org plugin download). Set false once installed / air-gapped.
+  gatewayExtraEgress: []                # raw NetworkPolicy egress rules, e.g. a cluster-local Ollama

@@ -1,0 +1,3 @@
+{{- $fn := include "urumi.fullname" . }}
+{{- $env := include "urumi.wooEnv" . }}
+{{ include "urumi.httpWorkload" (dict "root" . "component" "woo-mcp" "image" .Values.images.wooMcp "port" 3000 "replicas" .Values.wooMcp.replicas "resources" .Values.wooMcp.resources "env" $env) }}

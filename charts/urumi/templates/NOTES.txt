@@ -1,0 +1,24 @@
+Urumi MCP platform installed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+  Storefront        {{ include "urumi.storeUrl" . }}
+  WordPress admin   {{ include "urumi.storeUrl" . }}/wp-admin      (user: {{ .Values.store.adminUser }})
+  Dashboard         {{ include "urumi.dashboardUrl" . }}
+  MCP endpoint      {{ include "urumi.dashboardUrl" . }}/mcp       (Streamable HTTP, header: Authorization: Bearer <your key>)
+
+Secrets live in Secret "{{ include "urumi.secretName" . }}". Read what you need (never commit these):
+
+  # first admin API key (paste it on the dashboard sign-in page)
+  kubectl -n {{ .Release.Namespace }} get secret {{ include "urumi.secretName" . }} -o jsonpath='{.data.BOOTSTRAP_ADMIN_API_KEY}' | base64 -d; echo
+  # WordPress admin password
+  kubectl -n {{ .Release.Namespace }} get secret {{ include "urumi.secretName" . }} -o jsonpath='{.data.WORDPRESS_ADMIN_PASSWORD}' | base64 -d; echo
+
+First start takes a few minutes: MariaDB initialises, WordPress unpacks, and the wp-setup sidecar installs WooCommerce.
+Watch it:   kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "urumi.fullname" . }}-wordpress -c wp-setup -f
+{{- if not .Values.networkPolicy.enabled }}
+
+WARNING: networkPolicy.enabled=false - internal services are reachable from any pod in the cluster.
+{{- end }}
+{{- if eq .Values.gateway.llm.provider "mock" }}
+
+NOTE: the chat agent is in MOCK mode (scripted, no LLM). Set gateway.llm.provider=openai, gateway.llm.model and OPENAI_API_KEY for a real model.
+{{- end }}

@@ -1,0 +1,206 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $fn := include "urumi.fullname" . }}
+{{- $np := .Values.networkPolicy }}
+{{- /* Model: DENY everything for our pods (both directions), then open exactly the edges the architecture needs:
+         internet -> Ingress controller -> {wordpress, dashboard, gateway}
+         gateway -> {woo-mcp, demo-utils, demo-notes}       (the ONLY callers of the MCP servers)
+         woo-mcp -> wordpress -> mariadb
+       NetworkPolicy is only enforced if the cluster CNI supports it (Calico/Cilium/k3s kube-router: yes; kind's default kindnet: NO). */}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fn }}-default-deny
+  labels:
+    {{- include "urumi.labels" (dict "root" . "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes: ["Ingress", "Egress"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fn }}-allow-dns
+  labels:
+    {{- include "urumi.labels" (dict "root" . "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $np.dnsNamespace }}
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fn }}-mariadb
+  labels:
+    {{- include "urumi.labels" (dict "root" . "component" "mariadb") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "urumi.selector" (dict "root" . "component" "mariadb") | nindent 6 }}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "urumi.selector" (dict "root" . "component" "wordpress") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: 3306 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fn }}-wordpress
+  labels:
+    {{- include "urumi.labels" (dict "root" . "component" "wordpress") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "urumi.selector" (dict "root" . "component" "wordpress") | nindent 6 }}
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $np.ingressControllerNamespace }}
+        - podSelector:
+            matchLabels:
+              {{- include "urumi.selector" (dict "root" . "component" "woo-mcp") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: 80 }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "urumi.selector" (dict "root" . "component" "mariadb") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: 3306 }
+    {{- if $np.wordpressInternetEgress }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16"]
+      ports:
+        - { protocol: TCP, port: 443 }
+    {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fn }}-woo-mcp
+  labels:
+    {{- include "urumi.labels" (dict "root" . "component" "woo-mcp") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "urumi.selector" (dict "root" . "component" "woo-mcp") | nindent 6 }}
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "urumi.selector" (dict "root" . "component" "gateway") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: 3000 }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "urumi.selector" (dict "root" . "component" "wordpress") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: 80 }
+{{- range $c := list "demo-utils" "demo-notes" }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fn }}-{{ $c }}
+  labels:
+    {{- include "urumi.labels" (dict "root" $ "component" $c) | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "urumi.selector" (dict "root" $ "component" $c) | nindent 6 }}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "urumi.selector" (dict "root" $ "component" "gateway") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: 3000 }
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fn }}-gateway
+  labels:
+    {{- include "urumi.labels" (dict "root" . "component" "gateway") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "urumi.selector" (dict "root" . "component" "gateway") | nindent 6 }}
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $np.ingressControllerNamespace }}
+      ports:
+        - { protocol: TCP, port: 8080 }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "urumi.selector" (dict "root" . "component" "woo-mcp") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "urumi.selector" (dict "root" . "component" "demo-utils") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "urumi.selector" (dict "root" . "component" "demo-notes") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: 3000 }
+    {{- if $np.gatewayPublicEgress }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16"]
+      ports:
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 80 }
+    {{- end }}
+    {{- with $np.gatewayExtraEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fn }}-dashboard
+  labels:
+    {{- include "urumi.labels" (dict "root" . "component" "dashboard") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "urumi.selector" (dict "root" . "component" "dashboard") | nindent 6 }}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $np.ingressControllerNamespace }}
+      ports:
+        - { protocol: TCP, port: 8080 }
+{{- end }}

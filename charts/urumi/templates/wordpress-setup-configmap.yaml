@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "urumi.fullname" . }}-wp-setup
+  labels:
+    {{- include "urumi.labels" (dict "root" . "component" "wordpress") | nindent 4 }}
+data:
+  setup.sh: |
+    #!/bin/sh
+    # Idempotent first-run configuration of WordPress + WooCommerce, run by a wp-cli sidecar that shares the WordPress volume.
+    # Every step is safe to repeat, and the whole function is retried until it succeeds (e.g. DB not ready, wordpress.org unreachable).
+    cd /var/www/html || exit 1
+    log() { echo "[wp-setup] $*"; }
+
+    setup() {
+      [ -f wp-config.php ] || { log "waiting for wp-config.php"; return 1; }
+      wp db check >/dev/null 2>&1 || { log "waiting for database"; return 1; }
+
+      if ! wp core is-installed 2>/dev/null; then
+        log "installing WordPress"
+        wp core install --url="$WP_HOME" --title="$STORE_TITLE" --admin_user="$WP_ADMIN_USER" \
+          --admin_password="$WP_ADMIN_PASSWORD" --admin_email="$WP_ADMIN_EMAIL" --skip-email || return 1
+      fi
+
+      if [ "$INSTALL_WOOCOMMERCE" = "true" ] && ! wp plugin is-installed woocommerce; then
+        log "installing WooCommerce from wordpress.org"
+        wp plugin install woocommerce --activate || return 1
+      fi
+      wp plugin is-active woocommerce || { log "WooCommerce is not active (set store.installWooCommerce or preinstall it)"; return 1; }
+
+      wp option update timezone_string "$STORE_TIMEZONE" >/dev/null
+      wp option update woocommerce_currency "$STORE_CURRENCY" >/dev/null
+      wp option update woocommerce_default_country "$STORE_COUNTRY" >/dev/null
+      wp rewrite structure '/%postname%/' --hard >/dev/null      # pretty permalinks => /wp-json/ REST routes work
+      wp wc tool run install_pages --user="$WP_ADMIN_USER" >/dev/null 2>&1 || true   # shop, cart, checkout pages
+
+      # Test-friendly payment: Cash on delivery enabled (no external payment provider needed).
+      wp option update woocommerce_cod_settings '{"enabled":"yes","title":"Cash on delivery","description":"Pay with cash when your order arrives.","enable_for_methods":[],"enable_for_virtual":"yes"}' --format=json >/dev/null
+
+      # Dedicated REST API key for the MCP server, from the Kubernetes Secret (idempotent: replaced on every run).
+      wp eval-file /scripts/create-api-key.php || return 1
+      log "ready"
+    }
+
+    # Heartbeat from the very start (background loop): the liveness probe only checks this file is fresh, i.e. the shell is alive.
+    ( while true; do touch /tmp/heartbeat; sleep 20; done ) &
+    until setup; do sleep 10; done
+    wait
+  create-api-key.php: |
+    <?php
+    // Creates (or replaces) the WooCommerce REST API key used by the woo-mcp server. Key and secret come from the Kubernetes Secret,
+    // so the MCP server and WooCommerce always agree and nothing needs to be copied by hand out of wp-admin.
+    global $wpdb;
+    $ck = getenv('WC_CONSUMER_KEY'); $cs = getenv('WC_CONSUMER_SECRET');
+    if (!$ck || !$cs) { fwrite(STDERR, "missing WC_CONSUMER_KEY/SECRET\n"); exit(1); }
+    $user = get_user_by('login', getenv('WP_ADMIN_USER'));
+    if (!$user) { fwrite(STDERR, "admin user not found\n"); exit(1); }
+    if (!function_exists('wc_api_hash')) { fwrite(STDERR, "WooCommerce not loaded\n"); exit(1); }
+    $table = $wpdb->prefix . 'woocommerce_api_keys';
+    $wpdb->delete($table, array('description' => 'urumi-woo-mcp'));
+    $ok = $wpdb->insert($table, array(
+      'user_id' => $user->ID, 'description' => 'urumi-woo-mcp', 'permissions' => 'read_write',
+      'consumer_key' => wc_api_hash($ck), 'consumer_secret' => $cs, 'truncated_key' => substr($ck, -7),
+    ));
+    if ($ok === false) { fwrite(STDERR, "could not store API key: " . $wpdb->last_error . "\n"); exit(1); }
+    echo "WooCommerce REST API key for urumi-woo-mcp is in place\n";

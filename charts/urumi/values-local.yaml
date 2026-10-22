@@ -1,0 +1,23 @@
+# Local cluster (kind or k3d). Same chart as production; only these values differ.
+global:
+  domain: localtest.me     # *.localtest.me resolves to 127.0.0.1 on the public internet => no /etc/hosts edits needed. Offline? see README (hosts file).
+  scheme: http
+ingress:
+  className: nginx
+  gatewayAnnotations:        # a chat request can run ~120s; ingress-nginx defaults to 60s
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "130"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "130"
+networkPolicy:
+  ingressControllerNamespace: ingress-nginx
+gateway:
+  nodeEnv: development      # http locally => cookie cannot be Secure
+  cookieSecure: false
+  logLevel: debug
+  llm: { provider: mock }
+  persistence: { size: 512Mi }
+images:
+  pullPolicy: IfNotPresent  # images are loaded into the kind nodes (scripts/build-images.sh), never pulled from a registry
+mariadb:
+  persistence: { size: 2Gi }
+wordpress:
+  persistence: { size: 2Gi }

@@ -1,0 +1,37 @@
+# Production-like k3s VPS. Same chart; only these values differ from local.
+# REPLACE the domain and the registry before use (the chart refuses to render with the placeholder domain).
+global:
+  domain: example.com        # => shop.example.com and dashboard.example.com ; create DNS A records for both -> VPS public IP
+  scheme: https
+  storageClass: local-path   # k3s default provisioner (node-local disk; see docs for backup caveat)
+images:
+  pullPolicy: IfNotPresent
+  gateway:   { repository: registry.example.com/urumi/gateway,   tag: "0.1.0" }
+  wooMcp:    { repository: registry.example.com/urumi/woo-mcp,   tag: "0.1.0" }
+  demoMcp:   { repository: registry.example.com/urumi/demo-mcp,  tag: "0.1.0" }
+  dashboard: { repository: registry.example.com/urumi/dashboard, tag: "0.1.0" }
+imagePullSecrets: []         # e.g. [{ name: regcred }] for a private registry
+ingress:
+  className: traefik         # k3s ships Traefik
+  tls: { enabled: true, secretName: urumi-tls, clusterIssuer: letsencrypt-prod }
+secrets:
+  create: false
+  existingSecret: urumi-secrets   # created out-of-band by scripts/create-prod-secrets.sh (keeps secret values out of Helm release history)
+networkPolicy:
+  ingressControllerNamespace: kube-system   # Traefik runs in kube-system on k3s
+gateway:
+  nodeEnv: production
+  cookieSecure: true
+  logLevel: info
+  llm: { provider: openai, model: "" }      # set model; OPENAI_API_KEY goes in the Secret
+  persistence: { size: 2Gi }
+mariadb:
+  persistence: { size: 20Gi }
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "2", memory: 1536Mi }
+wordpress:
+  persistence: { size: 20Gi }
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "2", memory: 1536Mi }
