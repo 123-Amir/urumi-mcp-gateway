@@ -37,7 +37,7 @@ function ServerForm({ server, onClose, onSaved }) {
         <Field label="Identifier" hint={editing ? "Tools are exposed as identifier__tool. The identifier can't change after creation because clients depend on it." : 'Lowercase letters, digits and hyphens. Tools will be exposed as identifier__tool, for example shop__list_orders.'}>
           <input value={f.slug} onChange={set('slug')} required disabled={editing} pattern="[a-z][a-z0-9\-]{1,29}" />
         </Field>
-        <Field label="Server URL" hint="The Streamable HTTP endpoint, for example http://woo-mcp:3000/mcp. Internal addresses must be on the gateway's allowlist.">
+        <Field label="Server URL" hint={editing && server.hasCredential ? "If you change the URL you must enter the credential again, so a stored credential can never be redirected to a different host." : "The Streamable HTTP endpoint, for example http://woo-mcp:3000/mcp. Internal addresses must be on the gateway's allowlist."}>
           <input type="url" value={f.url} onChange={set('url')} required />
         </Field>
         <Field label="Authentication">

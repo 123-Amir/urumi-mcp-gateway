@@ -1,6 +1,6 @@
 # Last end-to-end run (`node e2e/run.mjs`)
 
-Run at 2026-10-22T18:16:38.506Z. Real gateway/woo-mcp/demo-mcp processes + official MCP SDK client; **WooCommerce is a fake** and chat is **mock mode** (no LLM).
+Run at 2026-10-23T20:12:33.903Z. Real gateway/woo-mcp/demo-mcp processes + official MCP SDK client; **WooCommerce is a fake** and chat is **mock mode** (no LLM).
 
 **37 PASS, 2 SIMULATED, 2 NOT RUN, 0 FAIL**
 
@@ -11,14 +11,14 @@ Run at 2026-10-22T18:16:38.506Z. Real gateway/woo-mcp/demo-mcp processes + offic
 | Setup: first admin signs in with the bootstrap key; WooCommerce MCP server is pre-registered | user A and user B exist with individual keys | PASS |  |
 | 1. Store: shopper checks out; order is visible to the admin  (SIMULATED store: NOT real WooCommerce) | order placed via the (fake) checkout is readable through the gateway | SIMULATED | order #1001 299.00 INR |
 | 1. Store: shopper checks out; order is visible to the admin  (SIMULATED store: NOT real WooCommerce) | real storefront + WooCommerce admin UI | NOT RUN | needs the real cluster: not exercised here |
-| 2. As user A: chat agent creates a product; it appears on the storefront | chat called woo__create_product as user A | PASS | 15 ms |
+| 2. As user A: chat agent creates a product; it appears on the storefront | chat called woo__create_product as user A | PASS | 17 ms |
 | 2. As user A: chat agent creates a product; it appears on the storefront | product appears on the (fake) storefront with the right price | SIMULATED | {"name":"Blue Bottle","price":"499"} |
 | 2. As user A: chat agent creates a product; it appears on the storefront | reply is labelled as mock mode | PASS |  |
 | 3. A shopper buys it; user A asks the chat agent for today's orders | chat used two tools in order: utils__current_date then woo__list_orders | PASS |  |
 | 3. A shopper buys it; user A asks the chat agent for today's orders | answer includes the new order (2 x 499 = 998.00) | PASS | - woo__list_orders: 2 order(s) today: #1002 processing 998.00 INR; #1001 processing 299.00 INR |
 | 3. A shopper buys it; user A asks the chat agent for today's orders | customer PII (email/phone) never reaches the chat/tool output | PASS |  |
 | 4+5. User B connects an external MCP client with ONLY the gateway URL and B's key | B discovers tools from ALL enabled upstreams (10 tools, 3 servers) | PASS | 10 tools |
-| 4+5. User B connects an external MCP client with ONLY the gateway URL and B's key | B answers the same "orders today" question (tool level) and sees the order | PASS | date 2026-10-22, 2 order(s) |
+| 4+5. User B connects an external MCP client with ONLY the gateway URL and B's key | B answers the same "orders today" question (tool level) and sees the order | PASS | date 2026-10-23, 2 order(s) |
 | 4+5. User B connects an external MCP client with ONLY the gateway URL and B's key | B has no LLM here: the natural-language prompt part is NOT run | NOT RUN | a real client (Claude Code/Cursor) + real LLM needed |
 | 6. One prompt that needs tools from two different upstream servers | the "orders today" prompt touched two upstreams (utils + woo) | PASS | utils+woo |
 | 7. Revoke user B's key: the next request is rejected | admin revokes B's key | PASS |  |

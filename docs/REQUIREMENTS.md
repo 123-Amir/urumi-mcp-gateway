@@ -51,3 +51,19 @@ Evidence: `node e2e/run.mjs` (writes `docs/E2E_LAST_RUN.md`) = real gateway/woo-
 | 8 | Disable an upstream; tools vanish from chat and external client | list + chat tool list + direct call + chat reply; re-enable restores | - |
 | 9 | Kill one upstream; others work; dashboard shows unreachable | real process SIGKILL; clear error; other upstreams OK; status+reason; auto-reconnect after restart | real `kubectl delete pod` |
 | 10 | All calls in audit under the right user | multiset comparison of 12 calls vs audit rows; no args/secrets stored; logs secret-free | - |
+
+## Assignment deliverables checklist
+| Deliverable (from the assignment) | Where | Status |
+|---|---|---|
+| README: local setup, VPS setup, place an order, connect an external MCP client, use the chat agent | `README.md`, `docs/DEPLOYMENT.md` | written; cluster steps **not run** |
+| Source: dashboard, backend + gateway, WooCommerce MCP server, chat agent | `dashboard/`, `gateway/`, `woo-mcp/`, `gateway/src/chat/` | done, tested |
+| Helm charts and values (local + prod) | `charts/urumi/` | statically verified; **not installed** |
+| "System design and tradeoffs" note | `docs/SYSTEM_DESIGN.md` | done |
+| Threat model note (shared credentials, no token passthrough, untrusted upstreams, member vs member) | `docs/THREAT_MODEL.md` | done |
+| Bonus / stand-out list and where to find them | `README.md` (Bonus and stand-out items) | done |
+| Demo video | script: `docs/DEMO_SCRIPT.md` | **video not recorded** (needs your cluster) |
+| Manager interview prep (Hinglish) | `docs/INTERVIEW_PREP_HINGLISH.md` | done; every citation machine-checked |
+| Documentation is consistent with the code | `docs/check_docs.py` (`make docs-check`), `docs/test_check_docs.py` | 95 paths, 56 test citations, 11 code excerpts, 22 env vars, 20 numeric facts verified |
+
+## Security findings fixed during documentation
+* Editing a server's URL kept its stored credential, so an admin could have redirected it to a host they control. Now the credential must be re-entered when the URL changes (test: `gateway/test/gateway.test.js`, "credential exfiltration").

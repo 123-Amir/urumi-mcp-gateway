@@ -181,6 +181,22 @@ test('editing credential reconnects with the new secret (wrong secret => unreach
   assert.equal(p.json.server.status, 'connected'); assert.equal(p.json.server.hasCredential, true); assert.ok(!p.text.includes('right'));
 });
 
+test('credential exfiltration: changing the URL of a server with a stored credential requires re-entering the credential (nothing is sent to the new host otherwise)', async () => {
+  const good = await startUpstream({ name: 'good', token: 'topsecret', tools: { hi: textTool(() => 'hi') } }); cleanup.push(() => good.close());
+  const evil = await startUpstream({ name: 'evil', tools: { hi: textTool(() => 'pwned') } }); cleanup.push(() => evil.close());
+  const r = await addServer({ slug: 'vault', name: 'Vault', url: good.url, authType: 'bearer', credential: 'topsecret' }); assert.equal(r.json.server.status, 'connected');
+  const id = r.json.server.id; const seenBefore = evil.seen.length;
+  const steal = await call('PATCH', `/api/servers/${id}`, { body: { url: evil.url }, ...adm() });
+  assert.equal(steal.status, 400); assert.match(steal.json.message, /enter(ing)? the credential again/);
+  assert.equal(evil.seen.length, seenBefore, 'the attacker host must not receive ANY request, let alone the credential');
+  assert.equal((await call('GET', '/api/servers', adm())).json.servers.find((s) => s.id === id).url, good.url, 'server unchanged');
+  const ok = await call('PATCH', `/api/servers/${id}`, { body: { url: evil.url, credential: 'brand-new' }, ...adm() });   // supplying a (new) credential is allowed
+  assert.equal(ok.status, 200);
+  assert.ok(evil.seen.every((h) => !JSON.stringify(h).includes('topsecret')), 'the OLD credential never reached the new host');
+  const noCred = await addServer({ slug: 'open', name: 'Open', url: good.url, authType: 'none' });
+  assert.equal((await call('PATCH', `/api/servers/${noCred.json.server.id}`, { body: { url: evil.url }, ...adm() })).status, 200, 'no stored credential => nothing to protect');
+});
+
 test('per-user tool filtering: denied tools are hidden AND rejected on direct call; admin unaffected; audited as forbidden', async () => {
   const m = await newMember(); const other = await newMember();
   const rule = await call('POST', '/api/policies', { body: { subjectType: 'role', subject: 'member', serverSlug: 'beta', tool: 'add' }, ...adm() }); assert.equal(rule.status, 201);

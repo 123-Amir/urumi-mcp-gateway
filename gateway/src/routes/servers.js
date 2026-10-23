@@ -57,6 +57,10 @@ export function serverRoutes({ db, config, manager, logger, mw }) {
     const next = { name: b.name ?? cur.name, url: b.url ?? cur.url, enabled: b.enabled ?? !!cur.enabled,
       auth_type: b.authType ?? cur.auth_type, auth_header_name: b.authHeaderName !== undefined ? b.authHeaderName : cur.auth_header_name, credential_enc: cur.credential_enc };
     if (b.url !== undefined) await checkUrl(b.url);
+    // A stored credential must never be re-pointed at a different host without someone proving they hold it. Otherwise an admin (or a hijacked
+    // admin session), who can never READ the credential, could still steal it by editing the URL to a host they control.
+    if (b.url !== undefined && b.url !== cur.url && cur.credential_enc && b.credential === undefined && (b.authType ?? cur.auth_type) !== 'none')
+      return res.status(400).json({ error: 'bad_request', message: 'Changing the URL requires entering the credential again, so a stored credential can never be redirected to a different host.' });
     if (b.credential !== undefined) next.credential_enc = b.credential === null ? null : encrypt(b.credential, config.encryptionKey);
     if (next.auth_type === 'none') { next.credential_enc = null; next.auth_header_name = null; }
     else checkAuthShape(next.auth_type, next.auth_header_name, next.credential_enc);
