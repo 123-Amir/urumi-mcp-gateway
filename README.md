@@ -33,6 +33,17 @@ Nothing but the gateway ever talks to an upstream MCP server. The chat agent run
 | Deployment | `charts/urumi/`, `*/Dockerfile`, `scripts/`, `deploy/` | Helm chart (local + prod values), images, cluster scripts |
 | Verification | `e2e/`, `charts/tools/`, `*/test/` | Unit/integration tests, end-to-end run, chart checks |
 
+## Submission deliverables
+
+* **Dashboard:** [`dashboard/`](dashboard/) (React UI for servers, team, API keys, audit, and chat)
+* **Backend and gateway:** [`gateway/`](gateway/) (REST API, authentication, authorization, upstream aggregation, audit, and MCP gateway)
+* **Chat agent:** [`gateway/src/chat/`](gateway/src/chat/) (mock and OpenAI-compatible tool-calling loop)
+* **WooCommerce MCP server:** [`woo-mcp/`](woo-mcp/) (five MCP tools backed by the WooCommerce REST API)
+* **Helm chart:** [`charts/urumi/`](charts/urumi/) with [`values-local.yaml`](charts/urumi/values-local.yaml) and [`values-prod.yaml`](charts/urumi/values-prod.yaml)
+* **System design and tradeoffs:** [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md)
+* **Threat model:** [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md)
+* **Bonus and stand-out items:** listed below with implementation and test locations
+
 ## Quick start A: local Kubernetes (kind)
 Needs Docker, kind, kubectl, helm.
 ```bash
